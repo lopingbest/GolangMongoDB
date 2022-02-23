@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -29,20 +30,30 @@ func CreatePersonEndpoint(response http.ResponseWriter, request *http.Request) {
 	result, _ := collection.InsertOne(ctx, person)
 	json.NewEncoder(response).Encode(result)
 }
-func GetPeopleEndpoint(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Add("content-type", "application/json")
-	params := mux.Vars(request)
-	id, _ := primitive.ObjectIDFromHex(params["id"])
-	var person Person
+
+func GetPeopleEndpoint(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("content-type", "application/json")
+	var people []Person
 	collection := client.Database("test").Collection("people")
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	err := collection.FindOne(ctx, Person{ID: id}).Decode(&person)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+	cursor, err := collection.Find(ctx, bson.M{})
 	if err != nil {
-		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte(`{ "message": "` + err.Error() + `" }`))
+		response.WriteHeader(http.StatusInternalServerError)
+		response.Write([]byte(`{ "message": "` + err.Error() + `" }`))
 		return
 	}
-	json.NewEncoder(writer).Encode(person)
+	defer cursor.Close(ctx)
+	for cursor.Next(ctx) {
+		var person Person
+		cursor.Decode(&person)
+		people = append(people, person)
+	}
+	if err := cursor.Err(); err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+		response.Write([]byte(`{ "message": "` + err.Error() + `" }`))
+		return
+	}
+	json.NewEncoder(response).Encode(people)
 }
 
 func GetPersonEndpoint(response http.ResponseWriter, request *http.Request) {

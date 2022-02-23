@@ -29,6 +29,21 @@ func CreatePersonEndpoint(response http.ResponseWriter, request *http.Request) {
 	result, _ := collection.InsertOne(ctx, person)
 	json.NewEncoder(response).Encode(result)
 }
+func GetPeopleEndpoint(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Add("content-type", "application/json")
+	params := mux.Vars(request)
+	id, _ := primitive.ObjectIDFromHex(params["id"])
+	var person Person
+	collection := client.Database("test").Collection("people")
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	err := collection.FindOne(ctx, Person{ID: id}).Decode(&person)
+	if err != nil {
+		writer.WriteHeader(http.StatusInternalServerError)
+		writer.Write([]byte(`{ "message": "` + err.Error() + `" }`))
+		return
+	}
+	json.NewEncoder(writer).Encode(person)
+}
 
 func main() {
 	fmt.Println("Starting the application...")
@@ -37,6 +52,6 @@ func main() {
 	client, _ = mongo.Connect(ctx, clientOptions)
 	router := mux.NewRouter()
 	router.HandleFunc("/person", CreatePersonEndpoint).Methods("POST")
-
+	router.HandleFunc("/people", GetPeopleEndpoint).Methods("GET")
 	http.ListenAndServe(":12345", router)
 }
